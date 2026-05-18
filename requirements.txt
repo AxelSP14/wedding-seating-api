@@ -1,0 +1,19 @@
+# Web framework — FastAPI is the modern Python standard for building APIs.
+# It auto-generates documentation and validates request/response shapes automatically.
+fastapi==0.115.5
+
+# ASGI server — Uvicorn runs the FastAPI app. Think of it as the equivalent
+# of Apache/Nginx but lightweight and built for Python async apps.
+uvicorn==0.32.1
+
+# MySQL driver — PyMySQL is a pure-Python MySQL client. No binary dependencies,
+# works everywhere, easy to read.
+pymysql==1.1.1
+
+# Environment variables — loads a .env file into os.environ so we never
+# hardcode credentials in source code.
+python-dotenv==1.0.1
+
+# Graph library — NetworkX gives us connected-components out of the box.
+# We use it to cluster guests linked by no_separar_de / depende_de relationships.
+networkx==3.4.2
