@@ -17,7 +17,9 @@ Our strategy:
   2. For each cluster, find every table where it can legally go:
        - Table has enough remaining seats  (hard constraint)
        - No no_sentar_con conflict exists  (hard constraint)
-       - Mobility clusters prefer accessible tables (hard-ish preference)
+       - If the table is at or above FILL_THRESHOLD seats, only allow
+         placement if the cluster shares a parentesco or family with the
+         existing occupants (soft-hard constraint with fallback).
 
   3. Among legal tables, pick the one with the HIGHEST SCORE:
        +10 per existing guest with the same parentesco   (soft)
@@ -29,6 +31,13 @@ Our strategy:
 """
 
 from models import Guest, Cluster, Table
+
+# If a table already has this many guests, we only place a new cluster there
+# if it shares at least one parentesco or family with the current occupants.
+# This avoids forcing unrelated guests into the last seat(s) of a table.
+# If NO table passes this stricter check, we fall back to normal placement
+# so no guest is ever left unassigned due to this rule alone.
+FILL_THRESHOLD = 11
 
 
 def assign_tables(
@@ -124,19 +133,17 @@ def assign_tables(
             continue
 
         # ── Find every table where this cluster can legally go ───────────────
-        legal_tables: list[Table] = []
-        for table in tables:
-            remaining_seats = table_cap[table.id] - len(table_occupants[table.id])
-
-            # Hard check 1: does this table have enough room?
-            if remaining_seats < cluster.size:
-                continue
-
-            # Hard check 2: would placing this cluster create a no_sentar_con conflict?
-            if _has_conflict(cluster.guest_ids, table_occupants[table.id], conflict_set):
-                continue
-
-            legal_tables.append(table)
+        # Try with the threshold rule first (prefer tables with matching group).
+        # Fall back to unrestricted placement so no guest is ever left out.
+        legal_tables = _find_legal_tables(
+            cluster, tables, table_cap, table_occupants, conflict_set,
+            guests_by_id, apply_threshold=True
+        )
+        if not legal_tables:
+            legal_tables = _find_legal_tables(
+                cluster, tables, table_cap, table_occupants, conflict_set,
+                guests_by_id, apply_threshold=False
+            )
 
         if not legal_tables:
             warnings.append(
@@ -167,6 +174,46 @@ def assign_tables(
             )
 
     return assignments, warnings
+
+
+def _find_legal_tables(
+    cluster: Cluster,
+    tables: list[Table],
+    table_cap: dict[int, int],
+    table_occupants: dict[int, list[int]],
+    conflict_set: set[tuple[int, int]],
+    guests_by_id: dict[int, Guest],
+    apply_threshold: bool,
+) -> list[Table]:
+    """
+    Return all tables where this cluster can legally be placed.
+
+    When apply_threshold=True, tables at or above FILL_THRESHOLD are skipped
+    unless the cluster shares a parentesco or family with existing occupants.
+    """
+    result: list[Table] = []
+    cluster_parentescos = set(cluster.parentesco_votes.keys())
+
+    for table in tables:
+        occupants = table_occupants[table.id]
+        remaining_seats = table_cap[table.id] - len(occupants)
+
+        if remaining_seats < cluster.size:
+            continue
+
+        if _has_conflict(cluster.guest_ids, occupants, conflict_set):
+            continue
+
+        if apply_threshold and len(occupants) >= FILL_THRESHOLD:
+            table_parentescos = {guests_by_id[g].parentesco for g in occupants}
+            table_families    = {guests_by_id[g].family_id  for g in occupants}
+            if not (cluster_parentescos & table_parentescos) and \
+               not (cluster.family_ids  & table_families):
+                continue
+
+        result.append(table)
+
+    return result
 
 
 def _has_conflict(
