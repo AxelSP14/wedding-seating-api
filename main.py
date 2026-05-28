@@ -31,6 +31,7 @@ from loader import (
     load_confirmed_guests,
     load_no_separar_de_pairs,
     load_no_sentar_con_pairs,
+    load_pinned_assignments,
     load_tables,
 )
 from classifier import build_clusters
@@ -118,7 +119,18 @@ def _run_pipeline() -> tuple[dict, list[str], dict, dict, list]:
         for gid in cluster.guest_ids:
             clusters_by_guest[gid] = cluster
 
-    # ── Step 5: Assign clusters to tables ────────────────────────────────
+    # ── Step 5: Merge hardcoded pins with admin-pinned DB assignments ─────
+    # Admin moves (pinned=1 in table_assignments) take precedence and are
+    # merged on top of the hardcoded GUEST_PIN dict.
+    db_pins = load_pinned_assignments()
+    # Only pin guests that are actually confirmed (in guests_by_id).
+    effective_pin = {
+        gid: tid
+        for gid, tid in {**GUEST_PIN, **db_pins}.items()
+        if gid in guests_by_id
+    }
+
+    # ── Step 6: Assign clusters to tables ────────────────────────────────
     assignments, warnings = assign_tables(
         clusters=clusters,
         guests_by_id=guests_by_id,
@@ -126,7 +138,7 @@ def _run_pipeline() -> tuple[dict, list[str], dict, dict, list]:
         tables=tables,
         min_capacity=MIN_CAP,
         max_capacity=MAX_CAP,
-        guest_pin=GUEST_PIN,
+        guest_pin=effective_pin,
     )
 
     return assignments, warnings, guests_by_id, clusters_by_guest, tables

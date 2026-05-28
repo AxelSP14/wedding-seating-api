@@ -89,6 +89,20 @@ def load_no_sentar_con_pairs() -> list[tuple[int, int]]:
     return [(row["guest_id"], row["other_guest_id"]) for row in rows]
 
 
+def load_pinned_assignments() -> dict[int, int]:
+    """
+    Return {guest_id: table_id} for every row in table_assignments
+    where pinned = 1 (manually moved by an admin).
+    The algorithm treats these as pre-assigned and never overwrites them.
+    """
+    sql = "SELECT guest_id, table_id FROM table_assignments WHERE pinned = 1"
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+    return {row["guest_id"]: row["table_id"] for row in rows}
+
+
 def load_tables() -> list[Table]:
     """
     Load all tables from tables_event.

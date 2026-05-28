@@ -39,6 +39,8 @@ from models import Guest, Cluster, Table
 # so no guest is ever left unassigned due to this rule alone.
 FILL_THRESHOLD = 11
 
+FAMILY_PARENTESCOS = {"FAM_AXEL", "FAM_VAL"}
+
 
 def assign_tables(
     clusters: list[Cluster],
@@ -90,8 +92,6 @@ def assign_tables(
     # Priority 0 → FAM_AXEL / FAM_VAL  (fill the first tables)
     # Priority 1 → all other parentescos (church, friends — interleaved)
     # Within each priority group, largest cluster goes first.
-    FAMILY_PARENTESCOS = {"FAM_AXEL", "FAM_VAL"}
-
     def _cluster_priority(c: Cluster) -> tuple[int, int]:
         group = 0 if c.dominant_parentesco in FAMILY_PARENTESCOS else 1
         return (group, -c.size)
@@ -250,13 +250,18 @@ def _has_conflict(
 # The penalty applies in BOTH directions (A→B and B→A).
 # Higher penalty = stronger separation.
 INCOMPATIBLE_PARENTESCO: list[tuple[str, str, int]] = [
-    # Families away from all church groups (strong: 30 pts per guest)
-    ("FAM_AXEL", "IGLESIA_VAL",     30),
-    ("FAM_AXEL", "IGLESIA_AXEL",    30),
-    ("FAM_AXEL", "IGLESIA_EXTERNA", 30),
-    ("FAM_VAL",  "IGLESIA_VAL",     30),
-    ("FAM_VAL",  "IGLESIA_AXEL",    30),
-    ("FAM_VAL",  "IGLESIA_EXTERNA", 30),
+    # Families away from church groups (strong: 30 pts per guest)
+    ("FAM_AXEL", "IGLESIA_VAL",          30),
+    ("FAM_AXEL", "IGLESIA_AXEL",         30),
+    ("FAM_AXEL", "IGLESIA_EXTERNA",      30),
+    ("FAM_VAL",  "IGLESIA_VAL",          30),
+    ("FAM_VAL",  "IGLESIA_AXEL",         30),
+    ("FAM_VAL",  "IGLESIA_EXTERNA",      30),
+    # Families away from friends (medium: 20 pts per guest)
+    ("FAM_AXEL", "AMIGOS_FAMILIA_VAL",   20),
+    ("FAM_AXEL", "AMIGOS_FAMILIA_AXEL",  20),
+    ("FAM_VAL",  "AMIGOS_FAMILIA_VAL",   20),
+    ("FAM_VAL",  "AMIGOS_FAMILIA_AXEL",  20),
 ]
 
 
@@ -306,5 +311,14 @@ def _score_table(
             score -= table_parentescos.count(b) * penalty
         if b in cluster.parentesco_votes:
             score -= table_parentescos.count(a) * penalty
+
+    # Non-family bonus: if this cluster has no family members, prefer tables
+    # that already have non-family guests and have no family guests at all.
+    # This pushes church/friends clusters to fill their own tables first.
+    cluster_is_non_family = not (cluster.parentesco_votes.keys() & FAMILY_PARENTESCOS)
+    if cluster_is_non_family and current_occupants:
+        table_has_family = any(p in FAMILY_PARENTESCOS for p in table_parentescos)
+        if not table_has_family:
+            score += len(current_occupants) * 3  # prefer filling non-family tables
 
     return score

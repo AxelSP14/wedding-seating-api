@@ -19,6 +19,7 @@ twice, it just updates the existing rows instead of crashing with a
 """
 
 from db import get_connection
+from loader import load_pinned_assignments
 from models import Guest, Cluster
 
 
@@ -34,8 +35,12 @@ def save_assignments(
     executemany() — much faster than calling execute() in a loop.
     """
 
+    pinned_ids = set(load_pinned_assignments().keys())
+
     rows = []
     for guest_id, table_id in assignments.items():
+        if guest_id in pinned_ids:
+            continue  # admin-pinned assignment — never overwrite
         guest = guests_by_id[guest_id]
         cluster = clusters_by_guest.get(guest_id)
 
