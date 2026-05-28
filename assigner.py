@@ -86,8 +86,17 @@ def assign_tables(
     assignments: dict[int, int] = {}
     warnings: list[str] = []
 
-    # ── Sort clusters: largest first ─────────────────────────────────────────
-    sorted_clusters = sorted(clusters, key=lambda c: c.size, reverse=True)
+    # ── Sort clusters: families first, then church+friends, largest within each group ──
+    # Priority 0 → FAM_AXEL / FAM_VAL  (fill the first tables)
+    # Priority 1 → all other parentescos (church, friends — interleaved)
+    # Within each priority group, largest cluster goes first.
+    FAMILY_PARENTESCOS = {"FAM_AXEL", "FAM_VAL"}
+
+    def _cluster_priority(c: Cluster) -> tuple[int, int]:
+        group = 0 if c.dominant_parentesco in FAMILY_PARENTESCOS else 1
+        return (group, -c.size)
+
+    sorted_clusters = sorted(clusters, key=_cluster_priority)
 
     # ── Pre-assign pinned clusters BEFORE the greedy loop ────────────────────
     # If guest_pin = {1: 1, 5: 2}, the cluster containing guest 1 is forced to
